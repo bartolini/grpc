@@ -1,0 +1,11 @@
+syntax = "proto3";
+option go_package = "miaow;miaow";
+
+message Message {
+    string body=1;
+}
+
+service ChatService {
+    rpc SayHello(Message) returns (Message) {};
+    rpc StreamHello(stream Message) returns (stream Message) {};
+}
