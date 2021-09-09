@@ -23,22 +23,23 @@ type serverImplementation struct {
 
 func (s *serverImplementation) SayHello(ctx context.Context, msg *miaow.Message) (*miaow.Message, error) {
 	s.msgCount++
-	log.Printf("Server received [%03d]: %s", s.msgCount, msg.Body)
+	log.Printf("Server received [%d]: %s", s.msgCount, msg.Body)
 	reply := new(miaow.Message)
 	reply.Body = fmt.Sprintf("=== PONG %s ===", msg.Body)
 	return reply, nil
 }
 
 func (s *serverImplementation) StreamHello(stream miaow.ChatService_StreamHelloServer) error {
+	log.Print("New stream...")
+	defer log.Print("Goodbye my stream...")
 	for {
 		if msg, err := stream.Recv(); err == io.EOF {
-			log.Print("Goodbye my stream...")
 			return nil
 		} else if err != nil {
 			return err
 		} else {
 			s.msgCount++
-			log.Printf("Stream received [%03d]: %s", s.msgCount, msg.Body)
+			log.Printf("Stream received [%d]: %s", s.msgCount, msg.Body)
 			reply := new(miaow.Message)
 			reply.Body = fmt.Sprintf("=== STREAM-BACK %s ===", msg.Body)
 			stream.Send(reply)
@@ -70,7 +71,7 @@ func tryClient() {
 
 	conn, err := grpc.Dial(listenAndServe, grpc.WithInsecure())
 	if err != nil {
-		log.Fatal("unable to connect")
+		log.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -81,20 +82,17 @@ func tryClient() {
 	for i := 0; i < msgCount; i++ {
 		message := new(miaow.Message)
 		message.Body = fmt.Sprintf("%#08x", rand.Uint32())
-
 		log.Printf("Sending: %s", message.Body)
-
 		reply, err := client.SayHello(context.Background(), message)
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		log.Printf("Received: %s", reply.Body)
 	}
 
 	log.Print("Streaming...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 
 	stream, err := client.StreamHello(ctx)
@@ -103,19 +101,27 @@ func tryClient() {
 	}
 
 	go func() {
-		stream.Send(&miaow.Message{Body: "Abracadabras"})
-		stream.Send(&miaow.Message{Body: "Wooohoo0ohoo"})
-		stream.Send(&miaow.Message{Body: "Incorporated"})
+		for i := 0; i < msgCount; i++ {
+			message := new(miaow.Message)
+			message.Body = fmt.Sprintf("%#08x", rand.Uint32())
+			log.Printf("Streaming: %s", message.Body)
+			if err := stream.Send(message); err != nil {
+				log.Fatal(err)
+			}
+		}
 		stream.CloseSend()
 	}()
 
 	go func() {
+		defer log.Print("Stream closed")
 		for {
-			msg, err := stream.Recv()
-			if err != nil {
+			if msg, err := stream.Recv(); err == io.EOF {
 				return
+			} else if err != nil {
+				log.Fatal(err)
+			} else {
+				log.Printf("Received: %s", msg.Body)
 			}
-			log.Printf("Received: %s", msg.Body)
 		}
 	}()
 
