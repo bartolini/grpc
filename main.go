@@ -92,8 +92,7 @@ func tryClient() {
 
 	log.Print("Streaming...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	stream, err := client.StreamHello(ctx)
 	if err != nil {
@@ -108,17 +107,16 @@ func tryClient() {
 			if err := stream.Send(message); err != nil {
 				log.Fatal(err)
 			}
+			time.Sleep(time.Millisecond)
 		}
 		stream.CloseSend()
+		cancel()
 	}()
 
 	go func() {
-		defer log.Print("Stream closed")
 		for {
-			if msg, err := stream.Recv(); err == io.EOF {
+			if msg, err := stream.Recv(); err != nil {
 				return
-			} else if err != nil {
-				log.Fatal(err)
 			} else {
 				log.Printf("Received: %s", msg.Body)
 			}
